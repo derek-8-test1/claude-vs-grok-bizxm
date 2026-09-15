@@ -37,7 +37,7 @@ src/readaloud.ts            read-aloud bar injection
 src/homepage.ts             marketing home
 src/strip-served-comments.ts  strips /* */ comments out of served CSS/JS at module load
 schema.sql                  the whole Postgres schema, RLS included
-migrations/                 every migration, in order, with the reasoning in comments
+migrations/                 the reasoning trail, one file per change (see below)
 ```
 
 ## Reading it
@@ -74,6 +74,23 @@ pattern scan whose own detection was verified first by planting a fake secret of
 requiring the scan to find it — a scanner that cannot find a planted secret proves nothing when
 it finds none. That control caught a real blind spot on its first run, which is the only reason
 this sentence is worth anything.
+
+## Configuration
+
+**Stack:** Cloudflare Workers + TypeScript, Supabase Postgres with row-level security, Google
+OAuth and email magic-link sign-in. No framework, no build step beyond `tsc`, no client-side
+JavaScript to speak of.
+
+- **[.dev.vars.example](.dev.vars.example)** lists every secret the Worker reads, names only.
+  Copy it to `.dev.vars` for `wrangler dev`, or set each one with `wrangler secret put <NAME>`.
+- **[wrangler.toml](wrangler.toml)** carries the non-secret `[vars]` — the two email allowlists,
+  published here as placeholders — plus the routes for both hostnames.
+- **`schema.sql` is the source of truth for the database.** Apply that to a fresh Supabase
+  project; it is the whole schema including every RLS policy.
+- **`migrations/` is the reasoning trail, not a migration runner.** The filenames are prefixed
+  with the internal work-item id that prompted each change, so they do NOT sort chronologically
+  and were never meant to be replayed in filename order. Read them for WHY a column or a policy
+  is the shape it is; build from `schema.sql`.
 
 ## Status
 

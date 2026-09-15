@@ -1,0 +1,29 @@
+# Cloudflare Worker secrets — NAMES ONLY, no values. Copy to .dev.vars for local development
+# (`wrangler dev` reads it) and set the real values with `wrangler secret put <NAME>` for deploys.
+#
+# This list was derived from the code, not from memory: every `Env` type member in src/ UNIONED
+# with every `env.X` read, so a binding that is read but never declared still appears. .dev.vars
+# is gitignored; this .example is the only copy that belongs in the repo.
+
+# --- Supabase. The service role key BYPASSES row-level security: everything the Worker does runs
+# --- with it, which is why ownership and published-only filters are re-asserted in the route code.
+SUPABASE_URL=
+SUPABASE_ANON_KEY=
+SUPABASE_SERVICE_ROLE_KEY=
+
+# --- Google sign-in (the admin back end, and Google auth on both hosts).
+GOOGLE_CLIENT_ID=
+GOOGLE_CLIENT_SECRET=
+
+# --- HMAC key for hashing visitor IPs in the lead-capture rate limiter. Not a shared secret with
+# --- any meaning outside this Worker; it exists so raw IPs are never stored.
+LEAD_IP_HASH_SECRET=
+
+# --- Stripe. ⚠ READ BUT NOT DECLARED in any Env type, because the Stripe path is a STUB: see the
+# --- "STUBBED, NOT WIRED" comment in src/index.ts. Listed here because the code reads it, so a
+# --- reader deserves to know it exists rather than meeting an undefined at runtime.
+STRIPE_PRICE_ID=
+
+# --- NOT SECRETS, and deliberately not here: ADMIN_EMAILS and ALLOWED_EMAILS are plain-text
+# --- [vars] in wrangler.toml, because an allowlist is configuration a reader should be able to
+# --- see. Their published values are placeholders.
