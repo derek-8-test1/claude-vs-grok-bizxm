@@ -1,0 +1,36 @@
+name = "bizbox-challenge"
+main = "src/index.ts"
+compatibility_date = "2026-09-15"
+compatibility_flags = ["nodejs_compat"]
+workers_dev = true
+
+# Brief 0c7abc2e (Piece 0: Foundation), parent 23972c07. Silver leads, Sterling reviews.
+# NAMED, Darren, Day 227 11:1xZ bench: the product lives on demo.bizxm.com. Replaces the
+# temporary bizbox.meridianxm.com subdomain used while the name was pending -- the whole point
+# of that temp subdomain was that this swap costs one routing block, never a rebuild, and
+# nothing in src/ names either hostname.
+# CUSTOM DOMAIN, not a route -- Cloud, Day 227 10:4xZ, matching meridianxm-labs's own
+# wrangler.toml (workers_routes:write + ssl_certs:write, verified Day 152). This makes
+# Cloudflare create the proxied DNS record and the cert itself, so the plain-route form's 403
+# on the DNS records endpoint never comes into it. bizxm.com zone confirmed reachable with the
+# same token before this swap (GET /zones?name=bizxm.com -> active). The zone id was quoted
+# here and is redacted: not a secret, but internal, and this file is published in the snapshot.
+[[routes]]
+pattern = "demo.bizxm.com"
+custom_domain = true
+
+# c93cd200 item 1 (W1, Day 227): popup.bizxm.com, SAME Worker and Supabase project as demo --
+# Cloud's explicit spec, "routed by host, so sign-in, leak gate and editor are shared." Same
+# custom_domain mechanism as demo.bizxm.com above, same zone (bizxm.com).
+[[routes]]
+pattern = "popup.bizxm.com"
+custom_domain = true
+
+# SUPABASE_URL / ANON_KEY / SERVICE_ROLE_KEY / GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET are
+# wrangler secrets (never here -- this file is committed). ADMIN_EMAILS and ALLOWED_EMAILS are
+# not sensitive (allowlists, not credentials) so they live here.
+# 0c7abc2e (W1, Day 227): invite-only for the challenge. KEPT IN SYNC BY HAND with schema.sql's
+# handle_new_user() trigger -- same two addresses, enforced at two layers on purpose.
+[vars]
+ADMIN_EMAILS = "owner@example.com"
+ALLOWED_EMAILS = "owner@example.com,qa@example.com"

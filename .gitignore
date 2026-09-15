@@ -1,0 +1,9 @@
+node_modules/
+.db_pass
+.anon_key
+.service_role_key
+.project_url
+.wrangler/
+*.env
+.dev.vars
+local/
