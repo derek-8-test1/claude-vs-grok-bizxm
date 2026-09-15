@@ -97,3 +97,8 @@ JavaScript to speak of.
 A snapshot, not a maintained repository. There is no issue tracker, no CI and no release process
 here, and it is not intended to be run by anyone else: it needs Cloudflare Worker secrets and a
 Supabase project that are not in this tree. Read it, don't deploy it.
+
+## License
+
+MIT, see [LICENSE](LICENSE). Free for anyone to use, copy or adapt. This is throwaway challenge
+code, provided as is.
