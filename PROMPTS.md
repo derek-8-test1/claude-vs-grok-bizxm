@@ -6,8 +6,8 @@ The fleet (several Claude Code instances) turned these into briefs, split the wo
 
 ## Time on the clock
 
-- **Whole build (demo.bizxm.com and popup.bizxm.com):** first prompt 11:19:40 Berlin, last prompt in this file 20:52:33 Berlin, **9 h 32 min** of elapsed time, 109 prompts.
-- **popup.bizxm.com only:** from the new-direction prompt at 19:51:59 Berlin (one prompt plus a screenshot of the Grok Bot team's plan) to the last prompt at 20:52:33 Berlin: **1 h 00 min**, 14 prompts.
+- **Whole build (demo.bizxm.com and popup.bizxm.com):** first prompt 11:19:40 Berlin, last prompt in this file 21:18:17 Berlin, **9 h 58 min** of elapsed time, 118 prompts.
+- **popup.bizxm.com only:** new-direction prompt at 19:51:59 Berlin (one prompt plus a screenshot of the Grok Bot team's plan). Live with sign-in and three designs to choose from by about 20:36 Berlin, **0 h 44 min** after that prompt. Last prompt in this file 21:18:17 Berlin, 1 h 26 min and 23 prompts after it, including the wrap-up, the public repo and the video.
 - Elapsed time is wall-clock, including the operator being on a live stream, breaks and non-build conversation. It is not a measure of machine time.
 
 All times are 2026-09-15. Berlin is UTC+2.
@@ -466,6 +466,42 @@ All times are 2026-09-15. Berlin is UTC+2.
 ### 20:52:33 Berlin (18:52:33 UTC)
 
 > include in the repo the exact prompts that we used with time stamps and total time we spent to get to there.
+
+### 20:57:45 Berlin (18:57:45 UTC)
+
+> yeah we need that sign in link the landing the return URL for the signing link goes to the demo one we were building earlier on today can you change the return URL to go to the to the Pop-Up sub domain
+
+### 20:57:58 Berlin (18:57:58 UTC)
+
+> how's the video coming along for the Twitter post sterling
+
+### 21:07:32 Berlin (19:07:32 UTC)
+
+> yeah it looks like it's hit the limit let's wrap this up I've seen enough I think let's get the post out and and then we'll share the repo and we'll say hey here's a head start we're gonna work on the business that builds businesses where they can one shot this essentially like we did almost all closer to one shot in
+
+### 21:11:19 Berlin (19:11:19 UTC)
+
+> how much percent weekly usage did we use on this I know we only measured the weekly usage from this morning but I feel like we only use like 5% I don't know did we do we here because I saw a jump I feel like it's 5% weekly usage to create this
+
+### 21:12:50 Berlin (19:12:50 UTC)
+
+> the video's not showing by the way yeah it was the video man I think it's like embed error or something
+
+### 21:14:11 Berlin (19:14:11 UTC)
+
+> cloud fire up gock and then we will  and then we will get grog to verify our claims and post the Twitter post but show me the draft before we post the Twitter post
+
+### 21:15:03 Berlin (19:15:03 UTC)
+
+> also get Stirling to add the backing music man come on bro but yet a video is fine just add it like that and put some kinetic text effects on there for God's sake like come on it looks like cheap and nasty make it look nice
+
+### 21:15:50 Berlin (19:15:50 UTC)
+
+> sterling read my last message about the changes to the video add some music at the normal music and some kinetic text effects leave the rest of it it's fine like the audio the voiceover I mean the voiceovers and yeah is fine just in the pictures what it is but just add some kinetic text effects some cool kinetic tax effects not boring's one not boring ones and background music
+
+### 21:18:17 Berlin (19:18:17 UTC)
+
+> in Cloud while they're working on that just make sure the Repos up to date with the email fix thing I don't know if that's already there but anyway pretty sure it's more than what they have
 
 ## Redactions
 

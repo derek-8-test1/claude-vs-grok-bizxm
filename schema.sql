@@ -50,7 +50,8 @@ alter table public.workspaces add column if not exists plan_status text not null
 -- Account area (W1, Day 227, Darren bench 12:2xZ): display_name is nullable and client-editable
 -- (via the existing workspace_owner_update policy above -- no new policy needed), falling back
 -- to the auth email everywhere it is shown. Applied live 2026-09-15; Darren's own row is set to
--- 'Darren' (id 1cc6122b-30e0-4f3e-b6f3-947b9b9d525f).
+-- 'Darren' (row id redacted -- it is the principal's own account identifier and this file is
+-- published in the public snapshot).
 alter table public.workspaces add column if not exists display_name text;
 -- 'none' | 'active' | 'past_due' | 'canceled' -- Stripe's own subscription.status vocabulary,
 -- not reinvented, so the webhook handler can write it through with no translation table to

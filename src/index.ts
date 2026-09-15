@@ -1375,7 +1375,11 @@ export default {
       if (!isAllowedEmail(email, env)) {
         return await page(env, "Business in a Box", `<p>This challenge build is invite-only right now. <a href="/">Back</a></p>`);
       }
-      const r = await fetch(`${env.SUPABASE_URL}/auth/v1/otp`, {
+      // ⛔ Same P0 as popup.ts: redirect_to is a QUERY PARAMETER on the raw endpoint, and
+      // options.email_redirect_to in the body is supabase-js's name for it, which GoTrue does
+      // not read. Demo happened to work because site_url IS demo -- it was right by accident.
+      const otpUrl = `${env.SUPABASE_URL}/auth/v1/otp?redirect_to=${encodeURIComponent(`${url.origin}/auth/callback`)}`;
+      const r = await fetch(otpUrl, {
         method: "POST",
         headers: { apikey: env.SUPABASE_ANON_KEY, "content-type": "application/json" },
         // email_redirect_to STATED EXPLICITLY, never left to the project's dashboard Site URL

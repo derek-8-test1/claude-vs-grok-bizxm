@@ -14,6 +14,16 @@
 // is redundant for an anon caller -- kept anyway because this uses the SERVICE ROLE key, which
 // bypasses RLS entirely, and a service-role query with no filter would leak drafts).
 // NOT built here: user/admin back ends (items 4, 6), the seed event (item 7).
+//
+// Item 10 (this file, W1, Day 227): the admin PAGE and its Google sign-in gate. Reuses
+// src/google-auth.ts's exchange/verify/mint core (Cloud's instruction: factor, never copy) --
+// this file owns only what is caller-specific: the allowlist check (popupIsDarren, the SAME
+// ADMIN_EMAILS binding the JSON admin API already gates on), the page styling, and the /admin
+// destination. The admin API routes themselves (GET /api/popup/admin/{events,rsvps,waitlist})
+// were already built and live under item 3 (Silver) -- this reads from the SAME tables directly
+// rather than re-fetching its own routes over HTTP, but the gate is identical: popupIsDarren().
+
+import { googleLoginUrl, exchangeGoogleCallback, GOOGLE_AUTH_FAILURE_MESSAGE } from "./google-auth";
 
 type Env = {
   SUPABASE_URL: string;
@@ -22,6 +32,13 @@ type Env = {
   // c93cd200 item 3 (Silver): the admin back end reuses the EXISTING isDarren()/ADMIN_EMAILS
   // allowlist rather than inventing a second admin concept -- same binding index.ts reads.
   ADMIN_EMAILS: string;
+  // c93cd200 item 10 (W1): the SAME Google client index.ts's admin sign-in uses -- one
+  // registered callback URL per host, https://popup.bizxm.com/auth/google/callback, already
+  // added to the Google client (Cloud confirmed, 30324da0). Bound at the Worker level, so it
+  // reaches this file whether or not popup.ts's own Env type names it -- named here so TS
+  // actually checks the call sites below rather than trusting an `any`.
+  GOOGLE_CLIENT_ID: string;
+  GOOGLE_CLIENT_SECRET: string;
 };
 
 // c93cd200 item 5 (W1, Day 227): the widened shape every template renders from -- Cloud's exact
@@ -176,8 +193,11 @@ async function getPublishedEventsPreview(env: Env): Promise<PopupCard[]> {
   // Still never faked: on any failure this returns [] and the page renders its honest
   // "nothing published yet" state rather than inventing cards.
   try {
+    // item 6 (W1): admin's hide/feature wiring. hidden=eq.false excludes an admin-hidden event
+    // from the carousel entirely (it still exists and its own /e/<id> page still works -- "hide"
+    // means off the carousel, not unpublished); order puts featured=true first, then soonest.
     const r = await fetch(
-      `${env.SUPABASE_URL}/rest/v1/popup_events?status=eq.published&select=id,title,city,venue_or_area,food_or_format,cover_image_url,starts_at,ends_at&order=starts_at.asc&limit=12`,
+      `${env.SUPABASE_URL}/rest/v1/popup_events?status=eq.published&hidden=eq.false&select=id,title,city,venue_or_area,food_or_format,cover_image_url,starts_at,ends_at&order=featured.desc,starts_at.asc&limit=12`,
       {
         headers: {
           apikey: env.SUPABASE_SERVICE_ROLE_KEY,
@@ -574,6 +594,11 @@ async function popupOwnWorkspaceId(userId: string, env: Env): Promise<string | n
 // cannot reach workspace_id, id or created_at by sending them.
 const EVENT_WRITABLE = ["title", "food_or_format", "city", "venue_or_area", "starts_at", "ends_at", "capacity", "cover_image_url", "status"] as const;
 const EVENT_SELECT = "id,workspace_id,title,food_or_format,city,venue_or_area,starts_at,ends_at,capacity,cover_image_url,status,created_at";
+// item 10 (W1): the admin event list also needs featured/hidden, which owner reads never do --
+// an owner cannot feature or hide their own event, only an admin can, so EVENT_SELECT itself is
+// deliberately left unchanged (widening it would put these two columns in front of every
+// operator-facing render for no reason).
+const ADMIN_EVENT_SELECT = EVENT_SELECT + ",featured,hidden";
 
 // Route shapes, declared ONCE. The unknown-path guard and the handlers below both match against
 // these same objects -- a second copy of these patterns for the guard would be a second
@@ -633,8 +658,11 @@ async function handlePopupApi(req: Request, env: Env, path: string): Promise<Res
   // Filtered to published here as well as in RLS -- this runs on the SERVICE ROLE, where the
   // public-read policy does not apply, so the filter is the only thing keeping drafts private.
   if (R_PUBLIC_LIST.test(path) && method === "GET") {
+    // item 6 (W1): same hide/feature wiring as the carousel preview -- a hidden event is off
+    // this list too (Sterling types the carousel against this exact route), never off its own
+    // direct event page below, which stays reachable by id whether hidden or not.
     const r = await fetch(
-      `${env.SUPABASE_URL}/rest/v1/popup_events?status=eq.published&select=${EVENT_SELECT}&order=starts_at.asc`,
+      `${env.SUPABASE_URL}/rest/v1/popup_events?status=eq.published&hidden=eq.false&select=${EVENT_SELECT}&order=featured.desc,starts_at.asc`,
       { headers: SR(env) },
     );
     if (!r.ok) return jsonResponse({ error: "could not load events" }, 502);
@@ -868,6 +896,13 @@ async function handlePopupApi(req: Request, env: Env, path: string): Promise<Res
 
 const POPUP_COOKIE = "bb_session";
 
+// item 10 (W1): the popup host's OWN Google routes -- distinct paths from index.ts's
+// /auth/google/{login,callback} because this is a DIFFERENT host (popup.bizxm.com vs
+// demo.bizxm.com/bizxm.com), each with its own registered callback URL on the Google client. The
+// mint core is shared (src/google-auth.ts); the route wiring, gate and landing page are not.
+const POPUP_GOOGLE_LOGIN_PATH = "/auth/google/login";
+const POPUP_GOOGLE_CALLBACK_PATH = "/auth/google/callback";
+
 function popupSetSessionCookie(access_token: string, refresh_token: string): string {
   const value = encodeURIComponent(JSON.stringify({ access_token, refresh_token }));
   // Host-only by omitting Domain: this cookie is for popup.bizxm.com and must not be presented
@@ -947,7 +982,12 @@ async function handlePopupAuth(req: Request, env: Env, path: string, url: URL): 
     if (!email.includes("@") || email.length < 5) {
       return Response.redirect(`${url.origin}/login?err=email`, 302);
     }
-    const r = await fetch(`${env.SUPABASE_URL}/auth/v1/otp`, {
+    // ⛔ redirect_to IS A QUERY PARAMETER ON THE RAW ENDPOINT. `options.email_redirect_to`
+    // in the body below is supabase-js's option name and GoTrue does not read it -- every link
+    // went to site_url (demo.bizxm.com) whatever this host asked for. Both are sent now: the
+    // query parameter is the one that works, the body field is what a supabase-js reader expects.
+    const otpUrl = `${env.SUPABASE_URL}/auth/v1/otp?redirect_to=${encodeURIComponent(`${url.origin}/auth/callback`)}`;
+    const r = await fetch(otpUrl, {
       method: "POST",
       headers: { apikey: env.SUPABASE_ANON_KEY, "content-type": "application/json" },
       // email_redirect_to is STATED, never left to the project's Site URL default -- that
@@ -1426,6 +1466,120 @@ async function handlePopupPublicEvent(req: Request, env: Env, path: string, url:
   );
 }
 
+// item 10 + item 6 (W1, Day 227): the admin gate (Google sign-in, popupIsDarren only) and the
+// admin page itself, built on the SAME reads item 3's JSON API already exposes -- read the
+// tables directly here rather than fetching this Worker's own API over HTTP from inside itself.
+// Returns null for any path it does not own, same convention as every handler above.
+async function handlePopupAdmin(req: Request, env: Env, path: string, url: URL): Promise<Response | null> {
+  if (path === POPUP_GOOGLE_LOGIN_PATH && req.method === "GET") {
+    return Response.redirect(googleLoginUrl(url.origin, POPUP_GOOGLE_CALLBACK_PATH, env), 302);
+  }
+
+  if (path === POPUP_GOOGLE_CALLBACK_PATH && req.method === "GET") {
+    const result = await exchangeGoogleCallback(url, POPUP_GOOGLE_CALLBACK_PATH, env);
+    if (!result.ok) {
+      // OUR sentence, never the upstream body -- google-auth.ts already logs it and discards it,
+      // see that file's header for why (Silver's leak census, 06d29161).
+      return popupHtml("Admin sign-in", `<h1>Could not sign in</h1><p>${escp(GOOGLE_AUTH_FAILURE_MESSAGE[result.reason])} <a href="${POPUP_GOOGLE_LOGIN_PATH}">Try again</a></p>`, 400);
+    }
+    // Allowlist check BEFORE any session is created -- same rule and same binding as every other
+    // admin gate in this file (popupIsDarren / ADMIN_EMAILS). A non-admin Google account gets a
+    // refusal page, never a cookie.
+    if (!popupIsDarren(result.email, env)) {
+      return popupHtml("Admin sign-in", `<h1>Not an admin account</h1><p>${escp(result.email)} is not on the admin list. <a href="/">Back to the site</a></p>`, 403);
+    }
+    return new Response(null, {
+      status: 302,
+      headers: { Location: `${url.origin}/admin`, "Set-Cookie": popupSetSessionCookie(result.access_token, result.refresh_token) },
+    });
+  }
+
+  if (path !== "/admin" && !path.startsWith("/admin/")) return null;
+
+  // GET /admin -- gated in two steps, deliberately distinguishable: signed OUT gets an
+  // invitation to sign in, signed in as the WRONG account gets a refusal naming the account so
+  // they know to switch Google accounts rather than retry the same one.
+  const user = await popupUser(req, env);
+  if (!user) {
+    return popupHtml(
+      "Admin sign-in",
+      `<h1>Pop-Up admin</h1><p>Sign in with the admin Google account to continue.</p>` +
+      `<p><a class="google" href="${POPUP_GOOGLE_LOGIN_PATH}" style="display:inline-block;padding:.7rem 1.2rem;border:1px solid #cfc7ba;border-radius:.4rem;text-decoration:none">Sign in with Google</a></p>`,
+    );
+  }
+  if (!popupIsDarren(user.email, env)) {
+    return popupHtml("Admin", `<h1>Not permitted</h1><p>Signed in as ${escp(user.email)}, which is not an admin account. <a href="/logout">Sign out</a></p>`, 403);
+  }
+
+  // POST /admin/events/<id>/toggle -- feature or hide/unhide an event. Explicit true/false from
+  // the form rather than a read-then-flip: two idempotent buttons (Feature / Unfeature) can never
+  // race each other into the wrong state the way a "read current value, then negate it" would.
+  const toggleMatch = path.match(/^\/admin\/events\/([0-9a-f-]{36})\/toggle$/i);
+  if (toggleMatch && req.method === "POST") {
+    const id = toggleMatch[1];
+    const form = await req.formData();
+    const field = String(form.get("field") || "");
+    const value = String(form.get("value") || "");
+    if ((field !== "featured" && field !== "hidden") || (value !== "true" && value !== "false")) {
+      return popupHtml("Admin", `<h1>Bad request</h1><p><a href="/admin">Back</a></p>`, 400);
+    }
+    const r = await fetch(`${env.SUPABASE_URL}/rest/v1/popup_events?id=eq.${id}&select=id`, {
+      method: "PATCH",
+      headers: { ...SR(env), Prefer: "return=representation" },
+      body: JSON.stringify({ [field]: value === "true" }),
+    });
+    // Admin has no workspace filter -- it can touch ANY event, unlike the owner routes above --
+    // so the only thing worth confirming is that the id existed at all.
+    if (r.ok) await r.json();
+    return new Response(null, { status: 302, headers: { Location: `${url.origin}/admin` } });
+  }
+
+  if (path !== "/admin" || req.method !== "GET") return null;
+
+  const [eventsRes, rsvpsRes, waitlistRes] = await Promise.all([
+    fetch(`${env.SUPABASE_URL}/rest/v1/popup_events?select=${ADMIN_EVENT_SELECT}&order=created_at.desc`, { headers: SR(env) }),
+    fetch(`${env.SUPABASE_URL}/rest/v1/popup_rsvps?select=id,event_id,name,email,party_size,created_at&order=created_at.desc&limit=100`, { headers: SR(env) }),
+    fetch(`${env.SUPABASE_URL}/rest/v1/popup_waitlist?select=id,role,city,contact,note,created_at&order=created_at.desc&limit=100`, { headers: SR(env) }),
+  ]);
+  const events = eventsRes.ok ? ((await eventsRes.json()) as Array<PopupEventRow & { featured: boolean; hidden: boolean }>) : [];
+  const rsvps = rsvpsRes.ok ? ((await rsvpsRes.json()) as Array<{ id: string; event_id: string; name: string; email: string; party_size: number; created_at: string }>) : [];
+  const waitlist = waitlistRes.ok ? ((await waitlistRes.json()) as Array<{ id: string; role: string; city: string | null; contact: string; note: string | null; created_at: string }>) : [];
+
+  const toggleForm = (eventId: string, field: "featured" | "hidden", current: boolean, onLabel: string, offLabel: string) =>
+    `<form method="post" action="/admin/events/${escp(eventId)}/toggle" style="display:inline">` +
+    `<input type="hidden" name="field" value="${field}"><input type="hidden" name="value" value="${current ? "false" : "true"}">` +
+    `<button type="submit" style="margin:0 0 0 .4rem;padding:.2rem .5rem;font-size:.85rem">${escp(current ? offLabel : onLabel)}</button></form>`;
+
+  const eventsHtml = events.length
+    ? events
+        .map(
+          (e) =>
+            `<div class="card"><strong>${escp(e.title)}</strong> <span class="muted">${escp(e.status)}${e.featured ? " &middot; featured" : ""}${e.hidden ? " &middot; hidden" : ""}</span><br>` +
+            `<span class="muted">${escp(e.city || "")}${e.starts_at ? " &middot; " + escp(String(e.starts_at).slice(0, 10)) : ""}</span>` +
+            `<div>${toggleForm(e.id, "featured", e.featured, "Feature", "Unfeature")}${toggleForm(e.id, "hidden", e.hidden, "Hide", "Unhide")}</div></div>`,
+        )
+        .join("")
+    : `<p class="muted">No events yet.</p>`;
+
+  const rsvpsHtml = rsvps.length
+    ? rsvps.map((r) => `<div class="card">${escp(r.name)} &middot; ${escp(r.email)} &middot; party of ${escp(String(r.party_size))}</div>`).join("")
+    : `<p class="muted">No RSVPs yet.</p>`;
+
+  const waitlistHtml = waitlist.length
+    ? waitlist
+        .map((w) => `<div class="card">${escp(w.role)} &middot; ${escp(w.city || "")} &middot; ${escp(w.contact)}${w.note ? " &middot; " + escp(w.note) : ""}</div>`)
+        .join("")
+    : `<p class="muted">Nothing on the waitlist yet.</p>`;
+
+  return popupHtml(
+    "Pop-Up admin",
+    `<p class="muted">Signed in as ${escp(user.email)} &middot; <a href="/logout">Sign out</a></p>` +
+    `<h1>Events</h1>${eventsHtml}` +
+    `<h1 style="margin-top:1.6rem">RSVPs</h1>${rsvpsHtml}` +
+    `<h1 style="margin-top:1.6rem">Waitlist</h1>${waitlistHtml}`,
+  );
+}
+
 export async function handlePopupRequest(req: Request, env: Env, path: string): Promise<Response> {
   const url = new URL(req.url);
   if (path === "/popup/waitlist" && req.method === "POST") {
@@ -1446,6 +1600,11 @@ export async function handlePopupRequest(req: Request, env: Env, path: string): 
   if (evRes) return evRes;
   const opRes = await handlePopupOperator(req, env, path, url);
   if (opRes) return opRes;
+  // c93cd200 item 10 (W1): the admin Google-auth routes and the /admin page. Before
+  // handlePopupAuth so a bare /admin (no trailing path) is never mistaken for anything auth owns
+  // -- handlePopupAuth does not match /admin at all, so order here is a safety margin, not a fix.
+  const adminRes = await handlePopupAdmin(req, env, path, url);
+  if (adminRes) return adminRes;
   const authRes = await handlePopupAuth(req, env, path, url);
   if (authRes) return authRes;
   // c93cd200 items 2/8 (Cloud's ruling, ebe0f1e1, Darren's pick): template 3 won the review.
